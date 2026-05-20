@@ -38,15 +38,20 @@ impl TerminalEmbedder {
                         }
                     }
                     PlatformEvent::EngineEvent(EngineEvent::Draw(buffer, width, height)) => {
-                        // Not sure if doing this on every frame is ok, hoping that the engine has
-                        // some mechanism to make this a no-op if the parameters are unchanged.
-                        self.engine.send_window_metrics_event(
-                            (
-                                (self.dimensions.0 as f64 * self.zoom).round() as usize,
-                                (self.dimensions.1 as f64 * self.zoom).round() as usize,
-                            ),
-                            self.terminal_window.device_pixel_ratio() * self.zoom * self.scale,
-                        )?;
+                        let win_size = (
+                            (self.dimensions.0 as f64 * self.zoom).round() as usize,
+                            (self.dimensions.1 as f64 * self.zoom).round() as usize,
+                        );
+                        let pixel_ratio =
+                            self.terminal_window.device_pixel_ratio() * self.zoom * self.scale;
+                        let metrics = (win_size, pixel_ratio);
+
+                        // Only send to the engine when something actually changed to
+                        // avoid triggering unnecessary redraws on every frame.
+                        if self.last_window_metrics != Some(metrics) {
+                            self.engine.send_window_metrics_event(win_size, pixel_ratio)?;
+                            self.last_window_metrics = Some(metrics);
+                        }
 
                         self.terminal_window
                             .draw(buffer, width, height, self.window_offset)?;

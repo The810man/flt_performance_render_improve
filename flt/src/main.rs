@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -47,6 +47,46 @@ struct Args {
     /// Log to a file in addition to the terminal.
     #[arg(long)]
     log_file: Option<String>,
+
+    /// Target frame rate hint sent to the Flutter engine (default: 60).
+    #[arg(long)]
+    fps: Option<usize>,
+
+    /// Override device pixel ratio. Higher values make Flutter render at a
+    /// finer DPI so text appears sharper (and smaller). Defaults to 0.3 in
+    /// ANSI mode; ignored when Kitty graphics are active unless explicitly set.
+    #[arg(long)]
+    pixel_ratio: Option<f64>,
+
+    /// Suppress all log output. The 4-line log window is hidden and engine
+    /// messages are silenced. Combine with --log-file to still capture logs.
+    #[arg(long)]
+    quiet: bool,
+
+    /// Character rendering mode for ANSI (non-Kitty) output.
+    ///
+    /// block  — ▀ half-block, 1×2 pixels per cell (default).
+    /// braille — Unicode braille patterns, 2×4 pixels per cell (sharper).
+    /// ascii   — ASCII density chars, 1×1 pixel per cell.
+    #[arg(long, value_enum, default_value_t = CharRenderArg::Block)]
+    char_render: CharRenderArg,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum CharRenderArg {
+    Block,
+    Braille,
+    Ascii,
+}
+
+impl From<CharRenderArg> for flt::CharRender {
+    fn from(arg: CharRenderArg) -> Self {
+        match arg {
+            CharRenderArg::Block => flt::CharRender::Block,
+            CharRenderArg::Braille => flt::CharRender::Braille,
+            CharRenderArg::Ascii => flt::CharRender::Ascii,
+        }
+    }
 }
 
 fn main() -> Result<(), flt::Error> {
@@ -62,6 +102,10 @@ fn main() -> Result<(), flt::Error> {
         args.no_kitty,
         args.no_gpu,
         args.log_file,
+        args.fps,
+        args.pixel_ratio,
+        args.char_render.into(),
+        args.quiet,
     )?;
 
     embedder.run_event_loop()?;

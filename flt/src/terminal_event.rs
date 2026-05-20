@@ -30,8 +30,7 @@ impl TerminalEmbedder {
                     return Ok(());
                 }
 
-                // The following only supports IME text fields.
-                // TODO(jiahaog): Non-IME key support which calls `FlutterEngineSendKeyEvent`.
+                // IME text input
                 match code {
                     KeyCode::Char(c) => {
                         self.engine.send_text_input_char(c).ok();
@@ -41,6 +40,16 @@ impl TerminalEmbedder {
                     }
                     _ => {}
                 }
+
+                // Hardware key events (HardwareKeyboard in Flutter framework)
+                if let Some((physical, logical)) = terminal_key_codes(code) {
+                    let char_arg = if let KeyCode::Char(c) = code { Some(c) } else { None };
+                    let down = flutter_sys::sys::FlutterKeyEventType_kFlutterKeyEventTypeDown;
+                    let up   = flutter_sys::sys::FlutterKeyEventType_kFlutterKeyEventTypeUp;
+                    self.engine.send_key_event(down, physical, logical, char_arg).ok();
+                    self.engine.send_key_event(up,   physical, logical, None).ok();
+                }
+
                 Ok(())
             }
             crossterm::event::Event::Mouse(MouseEvent {
@@ -186,6 +195,35 @@ impl TerminalEmbedder {
             _ => Ok(()),
         }
     }
+}
+
+/// Map crossterm KeyCode → (physical HID, logical Flutter) key codes.
+/// Physical = (hid_page << 16) | hid_usage; values from USB HID spec page 0x07.
+/// Logical values from Flutter's LogicalKeyboardKey.
+fn terminal_key_codes(code: KeyCode) -> Option<(u64, u64)> {
+    Some(match code {
+        // Navigation
+        KeyCode::Tab         => (0x0007002b, 0x00100000009),
+        KeyCode::Enter       => (0x00070028, 0x0010000000d),
+        KeyCode::Up          => (0x00070052, 0x00100000304),
+        KeyCode::Down        => (0x00070051, 0x00100000301),
+        KeyCode::Left        => (0x00070050, 0x00100000302),
+        KeyCode::Right       => (0x0007004f, 0x00100000303),
+        KeyCode::Home        => (0x0007004a, 0x00100000306),
+        KeyCode::End         => (0x0007004d, 0x00100000305),
+        KeyCode::PageUp      => (0x0007004b, 0x00100000308),
+        KeyCode::PageDown    => (0x0007004e, 0x00100000307),
+        KeyCode::Esc         => (0x00070029, 0x00100000001),
+        KeyCode::Backspace   => (0x0007002a, 0x00100000008),
+        KeyCode::Delete      => (0x0007004c, 0x0010000007f),
+        KeyCode::Char(c)     => {
+            let logical = c as u64;
+            // Physical: printable ASCII maps to USB HID page 7 usage.
+            // Use logical as physical stand-in — Flutter accepts this for text.
+            (logical, logical)
+        }
+        _ => return None,
+    })
 }
 
 fn to_mouse_button(value: crossterm::event::MouseButton) -> FlutterPointerMouseButton {

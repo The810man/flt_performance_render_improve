@@ -2,7 +2,7 @@ use crate::constants::FPS;
 use crate::event::{EngineEvent, PlatformEvent};
 use crate::semantics::FlutterSemanticsTree;
 use crate::task_runner::TaskRunner;
-use crate::terminal_window::TerminalWindow;
+use crate::terminal_window::{CharRender, TerminalWindow};
 use crate::Error;
 use flutter_sys::{sys, Callbacks, FlutterEngine};
 #[cfg(target_os = "macos")]
@@ -37,6 +37,8 @@ pub struct TerminalEmbedder {
     pub(crate) window_offset: (isize, isize),
     pub(crate) prev_window_offset: (isize, isize),
     pub(crate) mouse_down_pos: (isize, isize),
+    // Last metrics sent to the engine; skip the FFI call when unchanged.
+    pub(crate) last_window_metrics: Option<((usize, usize), f64)>,
 }
 
 impl TerminalEmbedder {
@@ -50,6 +52,10 @@ impl TerminalEmbedder {
         disable_kitty: bool,
         disable_gpu: bool,
         log_file: Option<String>,
+        fps: Option<usize>,
+        pixel_ratio: Option<f64>,
+        char_render: CharRender,
+        quiet: bool,
     ) -> Result<Self, Error> {
         let (main_sender, main_receiver) = channel();
 
@@ -60,6 +66,9 @@ impl TerminalEmbedder {
             disable_kitty,
             main_sender.clone(),
             log_file,
+            char_render,
+            pixel_ratio,
+            quiet,
         );
 
         let (sender_a, sender_b, sender_c, sender_d, sender_e) = (
@@ -401,10 +410,11 @@ kernel void copy_texture_to_buffer(texture2d<float, access::read> inputTexture [
             window_offset: (0, 0),
             prev_window_offset: (0, 0),
             mouse_down_pos: (0, 0),
+            last_window_metrics: None,
         };
 
         embedder.engine.notify_display_update(
-            FPS as f64,
+            fps.unwrap_or(FPS) as f64,
             (width, height),
             embedder.terminal_window.device_pixel_ratio(),
         )?;

@@ -10,3 +10,4 @@ mod terminal_window;
 
 pub use embedder::*;
 pub use error::*;
+pub use terminal_window::CharRender;
